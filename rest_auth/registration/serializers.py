@@ -1,3 +1,4 @@
+from django.db import IntegrityError
 from django.http import HttpRequest
 from django.utils.translation import ugettext_lazy as _
 from django.contrib.auth import get_user_model
@@ -16,6 +17,9 @@ except ImportError:
 
 from rest_framework import serializers
 from requests.exceptions import HTTPError
+
+
+User = get_user_model()
 
 
 class SocialAccountSerializer(serializers.ModelSerializer):
@@ -121,6 +125,11 @@ class SocialLoginSerializer(serializers.Serializer):
         try:
             login = self.get_social_login(adapter, app, social_token, access_token)
             complete_social_login(request, login)
+            try:
+                login.account.user = User.objects.get(email=login.user.email)
+                login.account.save()
+            except (User.DoesNotExist, IntegrityError):
+                pass
         except HTTPError:
             raise serializers.ValidationError(_("Incorrect value"))
 
@@ -131,7 +140,7 @@ class SocialLoginSerializer(serializers.Serializer):
             # link up the accounts due to security constraints
             if allauth_settings.UNIQUE_EMAIL:
                 # Do we have an account already with this email address?
-                account_exists = get_user_model().objects.filter(
+                account_exists = User.objects.filter(
                     email=login.user.email,
                 ).exists()
                 if account_exists:
